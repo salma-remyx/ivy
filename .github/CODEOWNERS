@@ -1,3 +1,12 @@
+# CODEOWNERS for unifyai/ivy
+#
+# Default reviewer pair are the two founding engineers; per-path
+# rules below override the default where Ivy's framework-specific
+# expertise applies (CODEOWNERS uses last-match-wins semantics).
+
+# Default reviewers.
+* @YushaArif99 @hmahmood24
+
 # Ivy Framework
 ivy/func_wrapper.py @Sam-Armstrong
 **/gradients.py @Sam-Armstrong
