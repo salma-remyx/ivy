@@ -7,6 +7,7 @@ from typing import Union, Optional, Callable
 
 # local
 import ivy
+from .weight_norm_control import weight_norm_control_term as _weight_norm_control_term
 
 
 # Base #
@@ -481,6 +482,64 @@ class AdamW(Adam):
             grads += self._weight_decay * v
 
         return super()._step(v, grads)
+
+
+class AdamWN(AdamW):
+    def __init__(
+        self,
+        lr: float = 1e-4,
+        beta1: float = 0.9,
+        beta2: float = 0.999,
+        epsilon: float = 1e-07,
+        weight_decay: float = 0.0,
+        target_norm: float = 0.0,
+        inplace: bool = True,
+        stop_gradients: bool = True,
+        trace_on_next_step: bool = False,
+        device: Optional[Union[ivy.Device, ivy.NativeDevice]] = None,
+    ):
+        """Construct an AdamWN (Adam with Weight Norm Control) optimizer.
+
+        As :class:`AdamW`, but the weight-decay term pulls each parameter tensor
+        toward a target L2 norm ``target_norm`` instead of toward zero, following
+        "Weight Norm Control" (arxiv:2311.11446). With ``target_norm = 0`` (the
+        default) the update is identical to :class:`AdamW`.
+
+        Parameters
+        ----------
+        weight_decay
+            weight decay / norm-control coefficient, default is ``0.0``
+        target_norm
+            target L2 norm each parameter tensor is decayed toward rather than
+            zero. ``0.0`` recovers :class:`AdamW`. Default is ``0.0``.
+
+        Notes
+        -----
+        ``lr``, ``beta1``, ``beta2``, ``epsilon``, ``inplace``,
+        ``stop_gradients``, ``trace_on_next_step`` and ``device`` are as in
+        :class:`AdamW`.
+        """
+        self._target_norm = target_norm
+        super().__init__(
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            weight_decay,
+            inplace,
+            stop_gradients,
+            trace_on_next_step,
+            device,
+        )
+
+    def _step(self, v: ivy.Container, grads: ivy.Container):
+        """Update ``v`` by an AdamWN step: weight-norm-control decay toward
+        ``target_norm`` followed by the Adam update from :class:`Adam`."""
+        # Pull each parameter toward target_norm instead of toward zero.
+        if self._weight_decay != 0:
+            grads += _weight_norm_control_term(v, self._weight_decay, self._target_norm)
+
+        return Adam._step(self, v, grads)
 
 
 class LAMB(Optimizer):
