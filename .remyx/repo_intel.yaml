@@ -12,7 +12,14 @@ observed_landing_zones:
       the public ivy.stateful.optimizers namespace alongsid
     branch: weight-norm-control
     timestamp: '2026-07-28T04:18:27Z'
-  last_observed: '2026-07-28T04:18:27Z'
+  - arxiv: 2405.06147v2
+    mode: Mode 1 (direct port)
+    call_site_specifics: 'Exported into ivy''s public layers API via ''from .layers
+      import *'' in ivy/stateful/__init__.py and ''from .stateful import *'' in ivy/__init__.py
+      (layers.py has no __all__, so the public class is picked '
+    branch: state-free-inference-of-state-space-models-the-transfer-func
+    timestamp: '2026-07-28T20:59:05Z'
+  last_observed: '2026-07-28T20:59:05Z'
 rejected_shapes:
 - shape_tag: null
   reason_code: null
@@ -21,4 +28,4 @@ rejected_shapes:
   - arxiv: 2607.12868v1
     timestamp: '2026-07-23T17:41:19Z'
 coordination_signals: []
-last_updated: '2026-07-28T04:18:27Z'
+last_updated: '2026-07-28T20:59:05Z'
