@@ -7,7 +7,6 @@ from typing import Union, Optional, Callable
 
 # local
 import ivy
-from .weight_norm_control import weight_norm_control_term as _weight_norm_control_term
 
 
 # Base #
@@ -482,6 +481,40 @@ class AdamW(Adam):
             grads += self._weight_decay * v
 
         return super()._step(v, grads)
+
+
+def _weight_norm_control_term(v, weight_decay, target_norm, epsilon=1e-12):
+    """Return the weight-norm-control gradient term to add to ``grads``.
+
+    For each parameter tensor the returned term is
+    ``weight_decay * (v - target_norm * v / (||v|| + epsilon))``: decoupled decay
+    toward ``target_norm`` rather than toward zero. With ``target_norm = 0`` this
+    reduces to the usual ``weight_decay * v`` weight-decay term, so the caller
+    behaves identically to a plain weight-decay optimizer.
+
+    Parameters
+    ----------
+    v
+        Nested variables container (or array) whose L2 norms are controlled. The
+        norm is computed independently per leaf tensor, so each parameter is
+        pulled toward its own ``target_norm``.
+    weight_decay
+        Weight-decay / norm-control coefficient.
+    target_norm
+        Target L2 norm each parameter tensor is pulled toward.
+    epsilon
+        Small constant stabilizing the norm in the denominator.
+
+    Returns
+    -------
+    ret
+        Container (or array) of the same shape as ``v`` to be added to the
+        gradients before the base optimizer step.
+    """
+    if target_norm == 0:
+        return weight_decay * v
+    norm = ivy.vector_norm(v)
+    return weight_decay * (v - target_norm * v / (norm + epsilon))
 
 
 class AdamWN(AdamW):
