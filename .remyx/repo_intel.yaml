@@ -1,6 +1,18 @@
 schema_version: 1
 fork: salma-remyx/ivy
-observed_landing_zones: []
+observed_landing_zones:
+- path: ivy/stateful/
+  shape_tags:
+  - library-shape-public-api
+  confirmed_by:
+  - arxiv: 2311.11446v2
+    mode: Mode 1 (direct port)
+    call_site_specifics: Exported via ivy/stateful/__init__.py (which runs `from .optimizers
+      import *` + `from . import optimizers`, and optimizers.py has no __all__) into
+      the public ivy.stateful.optimizers namespace alongsid
+    branch: weight-norm-control
+    timestamp: '2026-07-28T04:18:27Z'
+  last_observed: '2026-07-28T04:18:27Z'
 rejected_shapes:
 - shape_tag: null
   reason_code: null
@@ -9,4 +21,4 @@ rejected_shapes:
   - arxiv: 2607.12868v1
     timestamp: '2026-07-23T17:41:19Z'
 coordination_signals: []
-last_updated: '2026-07-23T17:41:19Z'
+last_updated: '2026-07-28T04:18:27Z'
