@@ -6,6 +6,10 @@ import ivy
 from ivy.func_wrapper import handle_nestable
 from ivy.stateful.initializers import GlorotUniform, Zeros
 from ivy.stateful.module import Module
+from ivy.stateful.transfer_function import (
+    apply_transfer_function,
+    transfer_function_poles,
+)
 
 # ToDo: update docstrings and typehints according to ivy\layers
 
@@ -1677,6 +1681,57 @@ class LSTM(Module):
         if self._return_state is not True:
             s += ", return_state={_return_state}"
         return s.format(**self.__dict__)
+
+
+# TransferFunction (state-space) #
+# -------------------------------#
+
+
+class TransferFunction(Module):
+    def __init__(
+        self,
+        input_channels,
+        output_channels,
+        state_size,
+        /,
+        *,
+        weight_initializer=GlorotUniform(),
+        device=None,
+        v=None,
+        dtype=None,
+    ):
+        """State-space sequence-mixing layer applied through its frequency-domain
+        transfer function, yielding state-free parallel inference."""
+        self._input_channels = input_channels
+        self._output_channels = output_channels
+        self._state_size = state_size
+        self._w_init = weight_initializer
+        Module.__init__(self, device=device, v=v, dtype=dtype)
+
+    def _create_variables(self, device=None, dtype=None):
+        """Create internal variables for the layer."""
+        device = ivy.default(device, self.device)
+        dtype = ivy.default(dtype, self.dtype)
+        s, ic, oc = self._state_size, self._input_channels, self._output_channels
+        new = lambda shape: self._w_init.create_variables(
+            shape, device, oc, ic, dtype=dtype
+        )
+        return {
+            "pole_logit": new((s,)),
+            "pole_angle": new((s,)),
+            "input_mix": new((s, ic)),
+            "output_mix": new((oc, s)),
+            "feedthrough": new((oc, ic)),
+        }
+
+    @handle_nestable
+    def _forward(self, x):
+        """Return the state-free mixed output *[batch_shape, t, out]* for an
+        input sequence *[batch_shape, t, in]*."""
+        poles = transfer_function_poles(self.v.pole_logit, self.v.pole_angle)
+        return apply_transfer_function(
+            x, poles, self.v.input_mix, self.v.output_mix, self.v.feedthrough
+        )
 
 
 # Pooling #
