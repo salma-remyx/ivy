@@ -7,6 +7,7 @@ from typing import Union, Optional, Callable
 
 # local
 import ivy
+from .layer_temperature import layerwise_lr_multipliers
 
 
 # Base #
@@ -594,3 +595,100 @@ class LAMB(Optimizer):
     @property
     def state(self):
         return ivy.Container({"mw": self._mw, "vw": self._vw})
+
+
+class TempBalance(Optimizer):
+    def __init__(
+        self,
+        lr: float = 1e-4,
+        s1: float = 0.5,
+        s2: float = 1.5,
+        recompute_every: int = 1,
+        inplace: bool = True,
+        stop_gradients: bool = True,
+        trace_on_next_step: bool = False,
+    ):
+        """Construct a TempBalance (layer-wise learning-rate scaling) optimizer.
+
+        Each layer's gradient is scaled by a multiplier in ``[s1, s2]`` derived
+        from the Heavy-Tailed Self-Regularization "temperature" of its weight
+        matrix, transferring learning-rate budget from overtrained layers to
+        undertrained ones. Adapted from Zhou et al., "Temperature Balancing,
+        Layer-wise Weight Analysis, and Neural Network Training" (NeurIPS 2023,
+        arXiv:2312.00359).
+
+        Parameters
+        ----------
+        lr
+            Base (global) learning rate, default is ``1e-4``.
+        s1
+            Minimum learning-rate multiplier, default is ``0.5``.
+        s2
+            Maximum learning-rate multiplier, default is ``1.5``.
+        recompute_every
+            Number of steps between recomputations of the layer-wise
+            temperatures. The paper recomputes once per epoch; set this to the
+            number of steps per epoch to match. Default is ``1`` (every step).
+        inplace
+            Whether to update the variables in-place, or to create new variable handles.
+            This is only relevant for frameworks with stateful variables such as
+            PyTorch.
+            Default is ``True``, provided the backend framework supports it.
+        stop_gradients
+            Whether to stop the gradients of the variables after each gradient step.
+            Default is ``True``.
+        trace_on_next_step
+            Whether to trace the optimizer on the next step. Default is ``False``.
+        """
+        Optimizer.__init__(
+            self, lr, inplace, stop_gradients, trace_on_next_step=trace_on_next_step
+        )
+        self._s1 = s1
+        self._s2 = s2
+        self._recompute_every = max(1, int(recompute_every))
+        self._cached_multipliers = None
+        self._tb_step = 0
+
+    # Custom Step
+
+    def _step(self, v: ivy.Container, grads: ivy.Container):
+        """Update nested variables container v by a gradient-descent step,
+        scaling each layer's gradient by its TempBalance multiplier.
+
+        Parameters
+        ----------
+        v
+            Nested variables to update.
+        grads
+            Nested gradients to update.
+
+        Returns
+        -------
+        ret
+            The updated variables, following the TempBalance step.
+        """
+        if (
+            self._cached_multipliers is None
+            or self._tb_step % self._recompute_every == 0
+        ):
+            self._cached_multipliers = layerwise_lr_multipliers(v, self._s1, self._s2)
+        self._tb_step += 1
+        scaled_grads = grads * self._cached_multipliers
+        lr = self._lr if isinstance(self._lr, float) else self._lr()
+        return ivy.gradient_descent_update(
+            v, scaled_grads, lr, stop_gradients=self._stop_gradients
+        )
+
+    def set_state(self, state: ivy.Container):
+        """Set state of the optimizer.
+
+        Parameters
+        ----------
+        state
+            Nested state to update.
+        """
+        pass
+
+    @property
+    def state(self):
+        return ivy.Container({})
