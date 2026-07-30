@@ -19,7 +19,14 @@ observed_landing_zones:
       (layers.py has no __all__, so the public class is picked '
     branch: state-free-inference-of-state-space-models-the-transfer-func
     timestamp: '2026-07-28T20:59:05Z'
-  last_observed: '2026-07-28T20:59:05Z'
+  - arxiv: 2312.00359v1
+    mode: Mode 2 (adapted port)
+    call_site_specifics: Public library class ivy.stateful.optimizers.TempBalance,
+      re-exported via `from .optimizers import *` in ivy/stateful/__init__.py and
+      consumed by external users exactly like the sibling SGD/Adam/LARS/
+    branch: temperature-balancing-layer-wise-weight-analysis-and-neural-
+    timestamp: '2026-07-30T20:25:15Z'
+  last_observed: '2026-07-30T20:25:15Z'
 rejected_shapes:
 - shape_tag: null
   reason_code: null
@@ -30,4 +37,4 @@ rejected_shapes:
   - arxiv: 2503.16183v2
     timestamp: '2026-07-30T04:01:44Z'
 coordination_signals: []
-last_updated: '2026-07-30T04:01:44Z'
+last_updated: '2026-07-30T20:25:15Z'
