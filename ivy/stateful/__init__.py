@@ -14,6 +14,8 @@ from . import norms
 from .norms import *
 from . import optimizers
 from .optimizers import *
+from . import weight_clip
+from .weight_clip import *
 from . import sequential
 from .sequential import *
 from . import utilities
