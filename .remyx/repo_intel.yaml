@@ -26,7 +26,14 @@ observed_landing_zones:
       consumed by external users exactly like the sibling SGD/Adam/LARS/
     branch: temperature-balancing-layer-wise-weight-analysis-and-neural-
     timestamp: '2026-07-30T20:25:15Z'
-  last_observed: '2026-07-30T20:25:15Z'
+  - arxiv: 2407.01704v1
+    mode: Mode 1 (direct port)
+    call_site_specifics: "Public package export \u2014 `from ivy.stateful import WeightClip,\
+      \ clip_weights` via `ivy/stateful/__init__.py`; it extends the existing `Optimizer`\
+      \ ABC contract (overrides `_step(v, grads) -> v`). No pre-"
+    branch: weight-clipping-for-deep-continual-and-reinforcement-learnin
+    timestamp: '2026-08-02T06:56:54Z'
+  last_observed: '2026-08-02T06:56:54Z'
 rejected_shapes:
 - shape_tag: null
   reason_code: null
@@ -37,4 +44,4 @@ rejected_shapes:
   - arxiv: 2503.16183v2
     timestamp: '2026-08-01T03:10:02Z'
 coordination_signals: []
-last_updated: '2026-08-01T03:10:02Z'
+last_updated: '2026-08-02T06:56:54Z'
