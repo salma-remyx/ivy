@@ -318,3 +318,38 @@ def test_sgd_optimizer(
         xs_grad_idxs=xs_grad_idxs,
         on_device=on_device,
     )
+
+
+# AdamZ
+def test_adamz_optimizer_adapts_learning_rate():
+    """Integration: AdamZ is exported from ivy.stateful.optimizers (a non-new
+    module) and driven through the existing Optimizer.step machinery, adapting
+    the learning rate on overshoot/stagnation (adapted from AdamZ,
+    arXiv:2411.15375)."""
+    import ivy
+    from ivy.stateful.optimizers import AdamZ
+
+    ivy.set_backend("numpy")
+    try:
+        v = ivy.Container({"w": ivy.array([1.0, -1.0, 2.0])})
+
+        # Overshoot: reversing the gradient direction across two steps makes
+        # successive gradients oppose, so the learning rate is reduced.
+        opt = AdamZ(lr=0.01)
+        opt.step(v, ivy.Container({"w": ivy.array([1.0, 1.0, 1.0])}))
+        lr_after_first = opt._lr
+        opt.step(v, ivy.Container({"w": ivy.array([-1.0, -1.0, -1.0])}))
+        assert opt._lr < lr_after_first
+
+        # Stagnation: tiny gradients for `patience` steps grow the learning rate.
+        opt_stag = AdamZ(lr=0.01, stagnation_threshold=1e-3, patience=3)
+        tiny = ivy.Container({"w": ivy.array([1e-5, 1e-5, 1e-5])})
+        for _ in range(4):
+            opt_stag.step(v, tiny)
+        assert opt_stag._lr > 0.01
+
+        # The public step returns a valid container with matching structure.
+        out = opt.step(v, ivy.Container({"w": ivy.array([0.5, 0.5, 0.5])}))
+        assert list(out.keys()) == list(v.keys())
+    finally:
+        ivy.previous_backend()

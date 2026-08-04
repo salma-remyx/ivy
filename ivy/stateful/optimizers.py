@@ -7,6 +7,7 @@ from typing import Union, Optional, Callable
 
 # local
 import ivy
+from .adaptive_lr import adjust_learning_rate, clip_gradients
 
 
 # Base #
@@ -480,6 +481,111 @@ class AdamW(Adam):
         if self._weight_decay != 0:
             grads += self._weight_decay * v
 
+        return super()._step(v, grads)
+
+
+class AdamZ(Adam):
+    def __init__(
+        self,
+        lr: float = 1e-2,
+        beta1: float = 0.9,
+        beta2: float = 0.999,
+        epsilon: float = 1e-8,
+        overshoot_factor: float = 0.5,
+        stagnation_factor: float = 1.2,
+        overshoot_threshold: float = 0.0,
+        stagnation_threshold: float = 1e-6,
+        patience: int = 10,
+        max_grad_norm: Optional[float] = 1.0,
+        lr_min: float = 1e-7,
+        lr_max: float = 1.0,
+        inplace: bool = True,
+        stop_gradients: bool = True,
+        trace_on_next_step: bool = False,
+        device: Optional[Union[ivy.Device, ivy.NativeDevice]] = None,
+    ):
+        """Construct an AdamZ optimizer: an Adam variant that dynamically
+        scales the learning rate down on overshoot and up on stagnation.
+
+        Adapted from AdamZ (Karimi & Bhatt, 2024; arXiv:2411.15375). Mode 2
+        adapted port -- the paper keys detection off the loss trajectory, but
+        the optimizer step contract only provides gradients, so gradient-
+        direction (overshoot) and gradient-norm (stagnation) proxies are used.
+        See :mod:`ivy.stateful.adaptive_lr` for the scheduling rule.
+
+        Parameters
+        ----------
+        lr
+            Initial learning rate, default ``1e-2``.
+        beta1, beta2, epsilon
+            Standard Adam moment/divisor constants; see :class:`Adam`.
+        overshoot_factor, stagnation_factor
+            Multipliers for ``lr`` on overshoot (``0.5``) / stagnation (``1.2``).
+        overshoot_threshold, stagnation_threshold
+            Cosine-similarity (``0.0``) and gradient-norm (``1e-6``) thresholds
+            that mark a step as an overshoot / stagnating.
+        patience
+            Consecutive stagnating steps before ``lr`` is grown. Default ``10``.
+        max_grad_norm
+            Max global gradient norm for clipping, or ``None`` to disable.
+        lr_min, lr_max
+            Inclusive clamp bounds on the learning rate.
+        """
+        self._overshoot_factor = overshoot_factor
+        self._stagnation_factor = stagnation_factor
+        self._overshoot_threshold = overshoot_threshold
+        self._stagnation_threshold = stagnation_threshold
+        self._patience = patience
+        self._max_grad_norm = max_grad_norm
+        self._lr_min = lr_min
+        self._lr_max = lr_max
+        self._prev_grads = None
+        self._stagnation_count = 0
+        super().__init__(
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            inplace,
+            stop_gradients,
+            trace_on_next_step,
+            device,
+        )
+
+    # Custom Step
+
+    def _step(self, v: ivy.Container, grads: ivy.Container):
+        """Update variables by an Adam step with an overshoot/stagnation-adapted
+        learning rate and global gradient clipping.
+
+        Parameters
+        ----------
+        v
+            Nested variables to update.
+        grads
+            Nested gradients to update.
+
+        Returns
+        -------
+        ret
+            The updated variables, following the AdamZ step.
+        """
+        grads = clip_gradients(grads, self._max_grad_norm)
+        new_lr, self._stagnation_count = adjust_learning_rate(
+            self._lr,
+            self._prev_grads,
+            grads,
+            self._stagnation_count,
+            overshoot_factor=self._overshoot_factor,
+            stagnation_factor=self._stagnation_factor,
+            overshoot_threshold=self._overshoot_threshold,
+            stagnation_threshold=self._stagnation_threshold,
+            patience=self._patience,
+            lr_min=self._lr_min,
+            lr_max=self._lr_max,
+        )
+        self._lr = new_lr
+        self._prev_grads = grads
         return super()._step(v, grads)
 
 
