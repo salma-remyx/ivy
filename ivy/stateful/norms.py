@@ -217,3 +217,118 @@ class BatchNorm2D(Module):
             f"momentum={self._momentum}, "
             f"track_running_stats={self._track_running_stats}"
         )
+
+
+def weight_conditioning(weights, /, *, mode: str = "row", eps: float = 1e-12, ord=2):
+    """Condition a weight matrix by diagonal equilibration.
+
+    Scales each row (or column) of ``weights`` by the reciprocal of its
+    vector norm, so every row (column) has unit norm. This narrows the gap
+    between the smallest and largest singular values, yielding a
+    better-conditioned matrix. The preconditioner is recomputed from the
+    current ``weights`` on every call; no SVD is required.
+
+    Adapted from *Weight Conditioning for Smooth Optimization of Neural
+    Networks* (arXiv:2409.03424), which identifies row equilibration as the
+    optimal diagonal preconditioner (Van Der Sluis' theorem) and notes the
+    same statements hold for the column and row-column forms.
+
+    Parameters
+    ----------
+    weights
+        Input weight matrix (or a stack of matrices) whose innermost two
+        dimensions form the matrices to equilibrate.
+    mode
+        ``"row"`` scales each row to unit norm (default, the paper's primary
+        form), ``"column"`` scales each column, ``"row_column"`` applies both.
+    eps
+        Floor applied to each norm to avoid division by zero. Default ``1e-12``.
+    ord
+        Order of the vector norm used for equilibration. Default ``2``.
+    """
+    if mode == "row":
+        out = weights / ivy.maximum(
+            ivy.vector_norm(weights, axis=-1, keepdims=True, ord=ord), eps
+        )
+    elif mode == "column":
+        out = weights / ivy.maximum(
+            ivy.vector_norm(weights, axis=-2, keepdims=True, ord=ord), eps
+        )
+    elif mode == "row_column":
+        out = weight_conditioning(weights, mode="row", eps=eps, ord=ord)
+        out = weight_conditioning(out, mode="column", eps=eps, ord=ord)
+    else:
+        raise ValueError(
+            f"mode must be one of 'row', 'column', 'row_column', got {mode!r}"
+        )
+    return out
+
+
+class WeightConditioning(Module):
+    def __init__(
+        self,
+        /,
+        *,
+        mode: str = "row",
+        eps: float = 1e-12,
+        ord=2,
+        device=None,
+        v=None,
+        dtype=None,
+    ):
+        """Class for conditioning weight matrices by diagonal equilibration.
+
+        Reuses the tensor -> tensor ``_forward`` contract of :class:`LayerNorm`:
+        the layer takes a weight matrix and returns its conditioned form, with
+        the per-row (or per-column) preconditioner recomputed on every forward
+        pass. The layer holds no learnable parameters -- the preconditioner is
+        a function of the input weights, mirroring the paper's parameter-free
+        formulation.
+
+        Parameters
+        ----------
+        mode
+            ``"row"`` scales each row to unit norm (default, the paper's
+            primary form), ``"column"`` scales each column, ``"row_column"``
+            applies both.
+        eps
+            Floor applied to each norm to avoid division by zero.
+            Default is ``1e-12``.
+        ord
+            Order of the vector norm used for equilibration. Default is ``2``.
+        device
+            device on which to create the layer's variables 'cuda:0', 'cuda:1',
+            'cpu' etc. (Default value = None)
+        v
+            the variables for each submodule in the sequence, constructed
+            internally by default.
+        """
+        if mode not in ("row", "column", "row_column"):
+            raise ValueError(
+                f"mode must be one of 'row', 'column', 'row_column', got {mode!r}"
+            )
+        self._mode = mode
+        self._epsilon = eps
+        self._ord = ord
+        Module.__init__(self, device=device, v=v, dtype=dtype)
+
+    def _forward(self, weights):
+        """Condition ``weights`` by recomputing the equilibration preconditioner.
+
+        Parameters
+        ----------
+        weights
+            Weight matrix (or stack of matrices) to equilibrate.
+
+        Returns
+        -------
+        ret
+            The conditioned weight matrix, with each row (or column) scaled to
+            unit norm.
+        """
+        return weight_conditioning(
+            weights, mode=self._mode, eps=self._epsilon, ord=self._ord
+        )
+
+    def _extra_repr(self) -> str:
+        return f"mode={self._mode}, epsilon={self._epsilon}, ord={self._ord}"
