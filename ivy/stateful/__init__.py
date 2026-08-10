@@ -14,6 +14,8 @@ from . import norms
 from .norms import *
 from . import optimizers
 from .optimizers import *
+from . import weight_conditioning
+from .weight_conditioning import *
 from . import sequential
 from .sequential import *
 from . import utilities

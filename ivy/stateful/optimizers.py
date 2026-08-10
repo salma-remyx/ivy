@@ -7,6 +7,7 @@ from typing import Union, Optional, Callable
 
 # local
 import ivy
+from ivy.stateful.weight_conditioning import weight_conditioning
 
 
 # Base #
@@ -594,3 +595,73 @@ class LAMB(Optimizer):
     @property
     def state(self):
         return ivy.Container({"mw": self._mw, "vw": self._vw})
+
+
+class WeightConditioning(Optimizer):
+    def __init__(
+        self,
+        lr: float = 1e-4,
+        eps: float = 1e-12,
+        inplace: bool = True,
+        stop_gradients: bool = True,
+        trace_on_next_step: bool = False,
+    ):
+        """Construct a Weight-Conditioning optimizer: gradient step + row equilibration.
+
+        Each step applies a gradient-descent update and then scales every row of
+        each 2-D weight matrix to unit L2 norm. Row equilibration narrows the gap
+        between the smallest and largest singular values (Van Der Sluis' theorem),
+        smoothing the loss landscape. Adapted from Zhang et al., "Weight
+        Conditioning for Smooth Optimization" (arXiv:2409.03424), which applies
+        the same equilibration in the forward pass; here it is folded into the
+        optimiser step via :meth:`Optimizer._step`.
+
+        Parameters
+        ----------
+        lr
+            Learning rate, default is ``1e-4``.
+        eps
+            Numerical floor for the per-row norms; guards division by zero on a
+            degenerate row. Not a tuning knob.
+        inplace
+            Whether to update the variables in-place. Default is ``True``.
+        stop_gradients
+            Whether to stop gradients after each step. Default is ``True``.
+        trace_on_next_step
+            Whether to trace the optimizer on the next step. Default is ``False``.
+        """
+        self._eps = eps
+        Optimizer.__init__(
+            self, lr, inplace, stop_gradients, trace_on_next_step=trace_on_next_step
+        )
+
+    def _step(self, v: ivy.Container, grads: ivy.Container):
+        """Gradient-descent update on ``v``, then row-equilibrate the weights.
+
+        Parameters
+        ----------
+        v
+            Nested variables to update.
+        grads
+            Nested gradients to update.
+
+        Returns
+        -------
+        ret
+            The updated, weight-conditioned variables container.
+        """
+        new_v = ivy.gradient_descent_update(
+            v,
+            grads,
+            self._lr if isinstance(self._lr, float) else self._lr(),
+            stop_gradients=self._stop_gradients,
+        )
+        return weight_conditioning(new_v, eps=self._eps)
+
+    def set_state(self, state: ivy.Container):
+        """Set state of the optimizer (stateless)."""
+        pass
+
+    @property
+    def state(self):
+        return ivy.Container({})
