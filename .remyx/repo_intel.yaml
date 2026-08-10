@@ -41,13 +41,13 @@ observed_landing_zones:
     branch: adamz-an-enhanced-optimisation-method-for-neural-network-tra
     timestamp: '2026-08-04T04:24:12Z'
   - arxiv: 2409.03424v1
-    mode: Mode 1 (direct port)
-    call_site_specifics: 'Public library API surface: WeightConditioning and weight_conditioning
-      are wildcard-exported by ivy/stateful/__init__.py (from .norms import *) and
-      re-exported at top level by ivy/__init__.py (from .s'
-    branch: weight-conditioning-for-smooth-optimization-of-neural-networ
-    timestamp: '2026-08-04T22:44:30Z'
-  last_observed: '2026-08-04T22:44:30Z'
+    mode: Mode 2 (adapted port)
+    call_site_specifics: 'Library public API surface, not an internal pipeline: WeightConditioning
+      is exported via ''from .optimizers import *'' in ivy/stateful/__init__.py (peer
+      of SGD/Adam/LAMB; optimizers.py has no __all__ so'
+    branch: weight-conditioning-for-smooth-optimization-of-neural-networ-v2
+    timestamp: '2026-08-10T15:44:37Z'
+  last_observed: '2026-08-10T15:44:37Z'
 rejected_shapes:
 - shape_tag: null
   reason_code: null
@@ -62,4 +62,4 @@ rejected_shapes:
   - arxiv: 2608.02162v1
     timestamp: '2026-08-09T21:29:49Z'
 coordination_signals: []
-last_updated: '2026-08-09T21:29:49Z'
+last_updated: '2026-08-10T15:44:37Z'
