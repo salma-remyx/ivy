@@ -47,7 +47,14 @@ observed_landing_zones:
       of SGD/Adam/LAMB; optimizers.py has no __all__ so'
     branch: weight-conditioning-for-smooth-optimization-of-neural-networ-v2
     timestamp: '2026-08-10T15:44:37Z'
-  last_observed: '2026-08-10T15:44:37Z'
+  - arxiv: 2402.18285v2
+    mode: Mode 2 (adapted port)
+    call_site_specifics: "(none) \u2014 public ivy.RequirementsProjection API surface:\
+      \ exported via ivy/stateful/__init__.py `from .layers import *` then ivy/__init__.py\
+      \ `from .stateful import *`, peer to Linear / IFFT / Conv*. Con"
+    branch: pishield-a-pytorch-package-for-learning-with-requirements
+    timestamp: '2026-08-11T09:01:35Z'
+  last_observed: '2026-08-11T09:01:35Z'
 rejected_shapes:
 - shape_tag: null
   reason_code: null
@@ -62,4 +69,4 @@ rejected_shapes:
   - arxiv: 2608.02162v1
     timestamp: '2026-08-09T21:29:49Z'
 coordination_signals: []
-last_updated: '2026-08-10T15:44:37Z'
+last_updated: '2026-08-11T09:01:35Z'
