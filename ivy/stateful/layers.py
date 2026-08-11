@@ -2537,3 +2537,168 @@ class IFFT(Module):
         if self._n is not False:
             s += ", n={_n}"
         return s.format(**self.__dict__)
+
+
+# Requirements projection (adapted from PiShield, Calzavara et al., 2024,
+# arXiv:2402.18285). Each requirement is a linear form ``a_i . y`` constrained
+# to an interval ``[lb_i, ub_i]``; an equality requirement has ``lb_i == ub_i``.
+# The layer maps any output ``y`` to a point satisfying every requirement, so
+# the returned output is guaranteed compliant regardless of the input, and the
+# projection is differentiable so the layer may be used at inference and/or
+# during training.
+# ------------------------#
+
+
+class RequirementsProjection(Module):
+    def __init__(
+        self,
+        weight,
+        /,
+        *,
+        lower=None,
+        upper=None,
+        num_iterations: int = 100,
+        eps: float = 1e-12,
+        device=None,
+        dtype=None,
+    ):
+        """Project the last axis of a tensor onto a set of linear requirements.
+
+        Each row of ``weight`` defines a linear requirement ``a_i . y`` that the
+        projected output must keep inside ``[lower_i, upper_i]``. A requirement
+        with equal finite bounds is an equality (``a_i . y == lower_i``). The
+        forward pass returns the input moved onto the feasible set, so the output
+        is guaranteed to satisfy the requirements for any input. Equality-only
+        requirement sets are solved exactly in closed form (one step); mixed /
+        one-sided bounds are solved by cyclic projection onto the requirement
+        half-spaces, converging to a feasible point. The projection is
+        differentiable, enabling use at inference and/or training time.
+
+        Adapted from PiShield [1]_ (Mode 2 port): the requirement-projection
+        mechanism is preserved at full fidelity; the upstream PyTorch package
+        scaffolding, training procedures and benchmark suite are intentionally
+        out of scope here.
+
+        Parameters
+        ----------
+        weight
+            Requirement matrix ``A`` of shape ``(m, n)`` with ``m`` requirements
+            over ``n``-dimensional outputs.
+        lower
+            Lower bounds of shape ``(m,)``. ``None`` means ``-inf`` everywhere.
+        upper
+            Upper bounds of shape ``(m,)``. ``None`` means ``+inf`` everywhere.
+        num_iterations
+            Number of cyclic-projection sweeps used for mixed / one-sided
+            bounds. Ignored for equality-only requirement sets (exact in one
+            step). Default ``100``.
+        eps
+            Small ridge constant stabilising the Gram-matrix inverse and row
+            norms. Default ``1e-12``.
+        device
+            Device on which to create the layer's variables 'cuda:0', 'cuda:1',
+            'cpu' etc. Default is cpu.
+        dtype
+            The desired data type of the internal arrays. Default is ``None``.
+
+        References
+        ----------
+        .. [1] Calzavara, S., et al. "PiShield: A PyTorch Package for Learning
+           with Requirements." arXiv:2402.18285, 2024.
+        """
+        weight_arr = ivy.array(weight, device=device, dtype=dtype)
+        if weight_arr.ndim != 2:
+            raise ivy.utils.exceptions.IvyValueError(
+                "weight must be a 2D (m, n) requirement matrix"
+            )
+        m = weight_arr.shape[0]
+        neg_inf = ivy.full((m,), -ivy.inf, dtype=weight_arr.dtype, device=device)
+        pos_inf = ivy.full((m,), ivy.inf, dtype=weight_arr.dtype, device=device)
+        lower_arr = (
+            neg_inf if lower is None else ivy.array(lower, device=device, dtype=dtype)
+        )
+        upper_arr = (
+            pos_inf if upper is None else ivy.array(upper, device=device, dtype=dtype)
+        )
+        if lower_arr.shape != (m,) or upper_arr.shape != (m,):
+            raise ivy.utils.exceptions.IvyValueError(
+                "lower and upper must have shape (m,) matching weight rows"
+            )
+        if num_iterations < 1:
+            raise ivy.utils.exceptions.IvyValueError(
+                "num_iterations must be a positive integer"
+            )
+        self._input_channels = weight_arr.shape[1]
+        self._num_requirements = m
+        self._weight = weight_arr
+        self._lower = lower_arr
+        self._upper = upper_arr
+        self._is_equality = ivy.equal(lower_arr, upper_arr)
+        self._num_iterations = int(num_iterations)
+        self._eps = float(eps)
+        Module.__init__(self, device=device, dtype=dtype)
+
+    def _create_variables(self, *, device=None, dtype=None):
+        # Requirements are fixed constraints, not trainable parameters: keeping
+        # them out of ``self.v`` preserves the compliance guarantee under any
+        # external optimizer applied to the surrounding model.
+        return {}
+
+    @staticmethod
+    def _linear(operator, vec):
+        # Matrix-vector product over the last axis: (m, n) @ (..., n) -> (..., m)
+        return ivy.matmul(operator, vec[..., None])[..., 0]
+
+    def _forward(self, inputs):
+        """Project ``inputs`` onto the requirement-feasible set.
+
+        Parameters
+        ----------
+        inputs
+            Tensors whose last axis matches the requirement dimension
+            ``[batch_shape, n]``.
+
+        Returns
+        -------
+        ret
+            Projected tensors of the same shape, satisfying every requirement.
+        """
+        y = ivy.astype(ivy.asarray(inputs), self._weight.dtype)
+        a = self._weight
+        lower = self._lower
+        upper = self._upper
+        row_sq = ivy.maximum(ivy.sum(a * a, axis=-1), self._eps)
+
+        # Equality-only requirement sets: exact closed-form KKT projection,
+        #   y' = y - A^T (A A^T)^-1 (A y - b).
+        if bool(ivy.all(self._is_equality)):
+            b = lower
+            gram = ivy.matmul(a, ivy.swapaxes(a, -1, -2))
+            gram = (
+                gram
+                + ivy.eye(gram.shape[-1], device=self.device, dtype=gram.dtype)
+                * self._eps
+            )
+            residual = self._linear(a, y) - b
+            correction = self._linear(
+                ivy.swapaxes(a, -1, -2), self._linear(ivy.inv(gram), residual)
+            )
+            return y - correction
+
+        # Mixed / one-sided bounds: cyclic projection onto each requirement
+        # half-space, vectorised across the leading (batch) axes.
+        num_req = self._num_requirements
+        for _ in range(self._num_iterations):
+            for i in range(num_req):
+                row = a[i]
+                score = ivy.sum(row * y, axis=-1)
+                clamped = ivy.minimum(ivy.maximum(score, lower[i]), upper[i])
+                step = (clamped - score) / row_sq[i]
+                y = y + step[..., None] * row
+        return y
+
+    def _extra_repr(self):
+        return (
+            f"requirements={self._num_requirements}, dim={self._input_channels},"
+            f" num_iterations={self._num_iterations}"
+        )
