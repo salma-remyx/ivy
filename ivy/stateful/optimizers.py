@@ -7,6 +7,7 @@ from typing import Union, Optional, Callable
 
 # local
 import ivy
+from ivy.stateful.weight_spectrum import WeightSpectrumTracker
 
 
 # Base #
@@ -23,6 +24,7 @@ class Optimizer(abc.ABC):
         trace_on_next_step: bool = False,
         fallback_to_non_traced: bool = False,
         device: Optional[Union[ivy.Device, ivy.NativeDevice]] = None,
+        track_spectrum: Optional[WeightSpectrumTracker] = None,
     ):
         """Construct a general Optimizer. This is an abstract class, and must
         be derived.
@@ -50,6 +52,10 @@ class Optimizer(abc.ABC):
         device
             Device on which to create the layer's variables 'cuda:0', 'cuda:1', 'cpu'
             etc. (Default value = None)
+        track_spectrum
+            Optional ``WeightSpectrumTracker`` which records the singular
+            value summary of the variables at each step. Default is
+            ``None``.
         """
         self._lr = lr
         self._inplace = inplace
@@ -62,6 +68,7 @@ class Optimizer(abc.ABC):
         self._count = ivy.array([0], device=self._dev)
         self._traced_step_fn = None
         self._traced = False
+        self._track_spectrum = track_spectrum
 
     # Private #
     # --------#
@@ -152,6 +159,8 @@ class Optimizer(abc.ABC):
         """
         self._count += 1
         self._initialized = True
+        if self._track_spectrum is not None:
+            self._track_spectrum._record(v)
         return self._step_fn(v, grads, ignore_missing)
 
 
@@ -166,6 +175,7 @@ class SGD(Optimizer):
         inplace: bool = True,
         stop_gradients: bool = True,
         trace_on_next_step: bool = False,
+        track_spectrum: Optional[WeightSpectrumTracker] = None,
     ):
         """Construct a Stochastic-Gradient-Descent (SGD) optimizer.
 
@@ -185,7 +195,12 @@ class SGD(Optimizer):
             Whether to trace the optimizer on the next step. Default is ``False``.
         """
         Optimizer.__init__(
-            self, lr, inplace, stop_gradients, trace_on_next_step=trace_on_next_step
+            self,
+            lr,
+            inplace,
+            stop_gradients,
+            trace_on_next_step=trace_on_next_step,
+            track_spectrum=track_spectrum,
         )
 
     # Custom Step
@@ -236,6 +251,7 @@ class LARS(Optimizer):
         inplace: bool = True,
         stop_gradients: bool = True,
         trace_on_next_step: bool = False,
+        track_spectrum: Optional[WeightSpectrumTracker] = None,
     ):
         """Construct a Layer-wise Adaptive Rate Scaling (LARS) optimizer.
 
@@ -258,7 +274,12 @@ class LARS(Optimizer):
         """
         self._decay_lambda = decay_lambda
         Optimizer.__init__(
-            self, lr, inplace, stop_gradients, trace_on_next_step=trace_on_next_step
+            self,
+            lr,
+            inplace,
+            stop_gradients,
+            trace_on_next_step=trace_on_next_step,
+            track_spectrum=track_spectrum,
         )
 
     # Custom Step
@@ -313,6 +334,7 @@ class Adam(Optimizer):
         stop_gradients: bool = True,
         trace_on_next_step: bool = False,
         device: Optional[Union[ivy.Device, ivy.NativeDevice]] = None,
+        track_spectrum: Optional[WeightSpectrumTracker] = None,
     ):
         """Construct an ADAM optimizer.
 
@@ -350,7 +372,14 @@ class Adam(Optimizer):
         self._should_trace = False
 
         Optimizer.__init__(
-            self, lr, inplace, stop_gradients, True, trace_on_next_step, device=device
+            self,
+            lr,
+            inplace,
+            stop_gradients,
+            True,
+            trace_on_next_step,
+            device=device,
+            track_spectrum=track_spectrum,
         )
 
     # Custom Step
@@ -418,6 +447,7 @@ class AdamW(Adam):
         stop_gradients: bool = True,
         trace_on_next_step: bool = False,
         device: Optional[Union[ivy.Device, ivy.NativeDevice]] = None,
+        track_spectrum: Optional[WeightSpectrumTracker] = None,
     ):
         """Construct an ADAMW optimizer.
 
@@ -458,6 +488,7 @@ class AdamW(Adam):
             stop_gradients,
             trace_on_next_step,
             device,
+            track_spectrum,
         )
 
     def _step(self, v: ivy.Container, grads: ivy.Container):
@@ -496,6 +527,7 @@ class LAMB(Optimizer):
         stop_gradients: bool = True,
         trace_on_next_step: bool = False,
         device: Optional[Union[ivy.Device, ivy.NativeDevice]] = None,
+        track_spectrum: Optional[WeightSpectrumTracker] = None,
     ):
         """Construct an LAMB optimizer.
 
@@ -530,7 +562,14 @@ class LAMB(Optimizer):
             etc. (Default value = None)
         """
         Optimizer.__init__(
-            self, lr, inplace, stop_gradients, True, trace_on_next_step, device=device
+            self,
+            lr,
+            inplace,
+            stop_gradients,
+            True,
+            trace_on_next_step,
+            device=device,
+            track_spectrum=track_spectrum,
         )
         self._beta1 = beta1
         self._beta2 = beta2

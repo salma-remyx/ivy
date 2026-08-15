@@ -18,3 +18,5 @@ from . import sequential
 from .sequential import *
 from . import utilities
 from .utilities import sync_models
+from . import weight_spectrum
+from .weight_spectrum import *
