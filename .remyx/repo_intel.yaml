@@ -61,7 +61,14 @@ observed_landing_zones:
       \ LAMB) now accepts an optional WeightSpectrumTracker and records befor"
     branch: approaching-deep-learning-through-the-spectral-dynamics-of-w
     timestamp: '2026-08-15T15:05:51Z'
-  last_observed: '2026-08-15T15:05:51Z'
+  - arxiv: 2407.01825v1
+    mode: Mode 2 (adapted port)
+    call_site_specifics: "ivy.stateful.optimizers.Optimizer.step \u2014 the tracker's\
+      \ `record(v, grads, new_v)` is invoked from inside the pre-existing step of\
+      \ every ivy optimizer (SGD, Adam, AdamW, LAMB, ...), and `AssumptionTrack"
+    branch: empirical-tests-of-optimization-assumptions-in-deep-learning
+    timestamp: '2026-08-23T06:51:53Z'
+  last_observed: '2026-08-23T06:51:53Z'
 rejected_shapes:
 - shape_tag: null
   reason_code: null
@@ -76,4 +83,4 @@ rejected_shapes:
   - arxiv: 2608.02162v1
     timestamp: '2026-08-09T21:29:49Z'
 coordination_signals: []
-last_updated: '2026-08-15T15:05:51Z'
+last_updated: '2026-08-23T06:51:53Z'
