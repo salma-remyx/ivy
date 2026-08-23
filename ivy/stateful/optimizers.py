@@ -129,7 +129,11 @@ class Optimizer(abc.ABC):
     # Given #
 
     def step(
-        self, v: ivy.Container, grads: ivy.Container, ignore_missing: bool = False
+        self,
+        v: ivy.Container,
+        grads: ivy.Container,
+        ignore_missing: bool = False,
+        tracker: Optional["ivy.stateful.assumptions.AssumptionTracker"] = None,
     ):
         """Update nested variables container v from overridden private
         self._step.
@@ -144,6 +148,10 @@ class Optimizer(abc.ABC):
             Whether to ignore keys missing from the gradients which exist in
             the variables.
             Default is ``False``.
+        tracker
+            Optional ``AssumptionTracker`` which measures this update against
+            the smoothness and descent-lemma quantities that convergence
+            analyses assume. The update itself is unchanged either way.
 
         Returns
         -------
@@ -152,7 +160,10 @@ class Optimizer(abc.ABC):
         """
         self._count += 1
         self._initialized = True
-        return self._step_fn(v, grads, ignore_missing)
+        new_v = self._step_fn(v, grads, ignore_missing)
+        if tracker is not None:
+            tracker.record(v, grads, new_v)
+        return new_v
 
 
 # Optimizers #

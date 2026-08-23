@@ -1,5 +1,7 @@
 from . import activations
 from .activations import *
+from . import assumptions
+from .assumptions import *
 from . import converters
 from .converters import *
 from . import initializers
